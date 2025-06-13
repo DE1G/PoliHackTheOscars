@@ -14,7 +14,7 @@ df = pd.read_csv(file_path, parse_dates=["date"])
 
 
 # Select only the required columns
-cols = ["date", "category", "state", "age_group", "gender", "is_weekend", "is_holiday"]
+cols = ["date", "category", "state", "age_group", "gender", "expected_volume_lag_1","expected_volume_lag_7","expected_volume_lag_14","expected_volume_lag_28","expected_volume_roll_mean_7","expected_volume_roll_mean_14","expected_volume_roll_mean_28","expected_volume_diff_1","expected_volume_diff_7"]
 df = df[cols + ["actual_volume"]]  # assuming 'actual_volume' is our prediction target
 
 # Feature engineering: date components
@@ -32,14 +32,14 @@ for col in cat_features:
     label_encoders[col] = le
 
 # Define features and target
-FEATURES = ["category", "state", "age_group", "gender", "day", "month", "year", "weekday"]
+FEATURES = ["category", "state", "age_group", "gender", "day", "month", "year", "weekday", "expected_volume_lag_1","expected_volume_lag_7","expected_volume_lag_14","expected_volume_lag_28","expected_volume_roll_mean_7","expected_volume_roll_mean_14","expected_volume_roll_mean_28","expected_volume_diff_1","expected_volume_diff_7"]
 TARGET = "actual_volume"
 X = df[FEATURES]
 y = df[TARGET]
 
 
 # Train-test split
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.3, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Convert to DMatrix
 dtrain = xgb.DMatrix(X_train, label=y_train)
@@ -50,7 +50,7 @@ params = {
     "objective": "reg:squarederror",
     "eval_metric": "rmse",
     "tree_method": "hist",
-    "eta": 0.1,
+    "eta": 0.05,
     "max_depth": 8,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
@@ -61,7 +61,7 @@ params = {
 bst = xgb.train(
     params,
     dtrain,
-    num_boost_round=2000,
+    num_boost_round=1000,
     evals=[(dtrain, "train"), (dval, "val")],
     early_stopping_rounds=20,
     verbose_eval=10
@@ -69,9 +69,9 @@ bst = xgb.train(
 
 # Evaluate
 y_pred = bst.predict(dval)
-rmse = np.sqrt(mean_squared_error(y_val, y_pred))
+mse = np.sqrt(mean_squared_error(y_val, y_pred))
 mas = mean_absolute_error(y_val, y_pred)
-print(f"Validation RMSE: {rmse:.2f}")
+print(f"Validation RMSE: {mse:.2f}")
 print(f"Validation MAE: {mas:.2f}")
 
 # Save the model
@@ -99,23 +99,5 @@ plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.show()
-
-def create_lag_features(df, group_cols, target_col, lags):
-    dfa = df.sort_values(by=[*group_cols, "date"])
-    for lag in lags:
-        dfa[f"{target_col}_lag_{lag}"] = dfa.groupby(group_cols)[target_col].shift(lag)
-    return dfa
-
-def create_rolling_features(df, group_cols, target_col, windows):
-    dfb = df.sort_values(by=[*group_cols, "date"])
-    for window in windows:
-        df[f"{target_col}_roll_mean_{window}"] = df.groupby(group_cols)[target_col].transform(lambda x: x.shift(1).rolling(window).mean())
-    return df
-
-def create_diff_features(df, group_cols, target_col, diffs):
-    dfc = df.sort_values(by=[*group_cols, "date"])
-    for d in diffs:
-        df[f"{target_col}_diff_{d}"] = df.groupby(group_cols)[target_col].diff(d)
-    return df
 
 
